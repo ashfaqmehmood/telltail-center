@@ -107,39 +107,53 @@ func (h *assetsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	s := &tsnet.Server{
-		Hostname: "telltail",
-	}
-	defer s.Close()
+  s := &tsnet.Server{
+      Hostname: "telltail",
+  }
+  defer s.Close()
 
-	ln, err := s.Listen("tcp", ":443")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer ln.Close()
+  ln, err := s.Listen("tcp", ":443")
+  if err != nil {
+      log.Fatal(err)
+  }
+  defer ln.Close()
 
-	lc, err := s.LocalClient()
-	if err != nil {
-		log.Fatal(err)
-	}
+  lc, err := s.LocalClient()
+  if err != nil {
+      log.Fatal(err)
+  }
 
-	http.HandleFunc("/", home)
-	http.HandleFunc("/set", set)
-	http.HandleFunc("/get", get)
-	http.Handle("/static/", &assetsHandler{})
+  // Set up your handlers
+  http.HandleFunc("/", home)
+  http.HandleFunc("/set", set)
+  http.HandleFunc("/get", get)
+  http.Handle("/static/", &assetsHandler{})
 
-	sseServer.EncodeBase64 = true // if not done, only first line of multiline string will be send, see https://github.com/r3labs/sse/issues/62
-	sseServer.AutoReplay = false
-	sseServer.CreateStream("texts")
-	http.HandleFunc("/events", sseServer.ServeHTTP)
+  // Set up SSE
+  sseServer.EncodeBase64 = true
+  sseServer.AutoReplay = false
+  sseServer.CreateStream("texts")
+  http.HandleFunc("/events", sseServer.ServeHTTP)
 
-	// serve with http:
-	// log.Fatal(http.Serve(ln, nil))
-	// or with https:
-	server := http.Server{
-		TLSConfig: &tls.Config{
-			GetCertificate: lc.GetCertificate,
-		},
-	}
-	log.Fatal(server.ServeTLS(ln, "", ""))
+  // Create a custom server with TLS config
+  server := &http.Server{
+      TLSConfig: &tls.Config{
+          GetCertificate: lc.GetCertificate,
+      },
+      Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+          if r.TLS == nil {
+              target := "https://" + r.Host + r.URL.Path
+              if len(r.URL.RawQuery) > 0 {
+                  target += "?" + r.URL.RawQuery
+              }
+              http.Redirect(w, r, target, http.StatusTemporaryRedirect)
+              return
+          }
+          http.DefaultServeMux.ServeHTTP(w, r)
+      }),
+  }
+
+  // Start the server
+  log.Fatal(server.ServeTLS(ln, "", ""))
 }
+
