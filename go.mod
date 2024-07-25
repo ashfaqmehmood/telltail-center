@@ -4,7 +4,7 @@ go 1.20
 
 require (
 	github.com/r3labs/sse/v2 v2.10.0
-	tailscale.com v1.38.2
+	tailscale.com v1.70.0
 )
 
 require (
